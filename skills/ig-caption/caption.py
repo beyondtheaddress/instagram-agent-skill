@@ -38,7 +38,9 @@ import unicodedata as _ud  # noqa: E402
 
 DEVA = "\u0900-\u0963\u0966-\u097f\ua8e0-\ua8ff"    # letters, signs, digits; not the danda
 DANDA = "\u0964\u0965"                               # । and ॥ end a sentence, like "."
-DEVA_WORD_RE = re.compile("[" + DEVA + "]+(?:[\u200c\u200d][" + DEVA + "]+)*")
+# A joiner or a hyphen inside a word keeps it one word: सोच-समझकर is one word,
+# the way "fast-paced" is one word in English.
+DEVA_WORD_RE = re.compile("[" + DEVA + "]+(?:[\u200c\u200d-][" + DEVA + "]+)*")
 NOT_PROSE_RE = re.compile(r"https?://\S+|www\.\S+|\S+@\S+\.\S+|[#@]\S+")
 CALIBRATION = ("uncalibrated: the thresholds were set on English text, so read "
                "this as a rough guide for Hindi")
@@ -57,12 +59,27 @@ def lang_of(text):
 
 
 def deva_fold(text):
-    """One spelling for comparing Hindi: the nukta is dropped (ज़ = ज, ड़ = ड)
-    and candrabindu reads as anusvara (पाँच = पांच). Text without Devanagari
-    comes back unchanged."""
+    """One spelling for comparing Hindi, used only for matching, never for
+    output. Each rule joins two spellings of the same word:
+      nukta dropped            ज़रूरी = जरूरी, ग़लत = गलत
+      candrabindu = anusvara   पाँच = पांच
+      visarga dropped          निःसंदेह = निसंदेह, दुःख = दुख
+      त्त्व = त्व                महत्त्वपूर्ण = महत्वपूर्ण
+      -ये / -यी endings        गये = गए, लिये = लिए, नयी = नई (the word ये is kept)
+      यह = ये                  यह कहना = ये कहना
+      hyphen in a compound     भाग-दौड़ = भागदौड़
+      zero-width joiners       dropped
+    Text without Devanagari comes back unchanged."""
     if not re.search("[" + DEVA + "]", text):
         return text
-    return _ud.normalize("NFC", text).replace("\u093c", "").replace("\u0901", "\u0902")
+    t = _ud.normalize("NFC", text)
+    t = t.replace("\u093c", "").replace("\u0901", "\u0902").replace("\u0903", "")
+    t = t.replace("\u0924\u094d\u0924\u094d\u0935", "\u0924\u094d\u0935")
+    t = re.sub("[\u200c\u200d]", "", t)
+    t = re.sub("(?<=[" + DEVA + "])-(?=[" + DEVA + "])", "", t)
+    t = re.sub("(?<=[" + DEVA + "])\u092f\u0947(?![" + DEVA + "])", "\u090f", t)
+    t = re.sub("(?<=[" + DEVA + "])\u092f\u0940(?![" + DEVA + "])", "\u0908", t)
+    return re.sub("(?<![" + DEVA + "])\u092f\u0939(?![" + DEVA + "])", "\u092f\u0947", t)
 
 
 def deva_edges(body):
@@ -94,7 +111,7 @@ def _deva_set(*groups):
 HI_SPOKEN_NUMBERS = _deva_set(
     "दो तीन चार पाँच पांच छह छः सात आठ नौ दस ग्यारह बारह पंद्रह बीस पच्चीस तीस",
     "चालीस पचास साठ सत्तर अस्सी नब्बे सौ हज़ार हजार लाख करोड़ अरब दर्जन",
-    "आधा आधी आधे डेढ़ ढाई दोगुना दुगना तिगुना")
+    "आधा आधी आधे डेढ़ ढाई साढ़े सवा पौने दोगुना दुगना तिगुना")
 HI_MONEY_WORDS = _deva_set(
     "रुपये रुपए रुपया रुपयों पैसे पैसा किराया किराए सैलरी तनख़्वाह वेतन मुनाफ़ा",
     "ब्याज कीमत क़ीमत दाम बजट लोन ईएमआई प्रतिशत फ़ीसदी")
@@ -102,6 +119,24 @@ HI_MONEY_WORDS = _deva_set(
 HI_YOU = _deva_set("आप आपका आपकी आपके आपको आपने आपसे तुम तुम्हें तुम्हारा तुम्हारी",
                    "तुम्हारे तू तेरा तेरी तेरे तुझे")
 HI_ME = _deva_set("मैं मैंने मेरा मेरी मेरे मुझे मुझसे हम हमने हमारा हमारी हमारे हमें")
+# दो is two, and also "give" (पैसे दो, बता दो). As a verb it closes the clause
+# or follows another verb, so it is not counted there.
+_HI_DO_VERB_BEFORE = _deva_set("दे कर बता लिख भेज छोड़ रख ले दिखा समझा सुना")
+_HI_DO_VERB_AFTER = _deva_set("और फिर ना तो जी यार भाई")
+
+
+def hi_number_hits(tokens):
+    """Positions of the Hindi number and money words in a list of
+    deva_fold()ed tokens. Positions, so a caller can show the writer's own
+    spelling rather than the folded one."""
+    hits = []
+    for i, t in enumerate(tokens):
+        if t in HI_SPOKEN_NUMBERS or t in HI_MONEY_WORDS:
+            if t == "दो" and (i == len(tokens) - 1 or (i and tokens[i - 1] in _HI_DO_VERB_BEFORE)
+                              or tokens[i + 1] in _HI_DO_VERB_AFTER):
+                continue
+            hits.append(i)
+    return hits
 # --- end of Devanagari support -----------------------------------------------
 
 
@@ -160,18 +195,25 @@ ASKS = [
 # "Comment में PAPERS लिखिए" is one typeable keyword ask, the same as
 # "Comment PAPERS". A Devanagari or lower-case keyword is a loose one: most
 # people type comments on an English keyboard, so capitals are what works.
-HI_WRITE = r"(?:लिखिए|लिखें|लिखो|लिख दीजिए|लिख दें|कमेंट करें|कमेंट कीजिए|comment करें|comment कीजिए)"
+HI_WRITE = (r"(?:लिखिए|लिखें|लिखो|लिख दीजिए|लिख दें|लिख दो|लिखना|कमेंट करें|कमेंट कीजिए|कमेंट करो"
+            r"|comment करें|comment कीजिए|comment करो)")
 HI_COMMENT = r"(?i:comment|कमेंट|कॉमेंट|कमेन्ट)(?:\s+(?:में|मे|बॉक्स में|box में))?"
+HI_COMMENT_VERB = r"(?:\s+(?:करो|करें|कीजिए|करिए|कर दो|कर दीजिए|कर दें))?"   # "Comment करो PAPERS"
 HI_KEYWORD_ASK = re.compile(deva_fold(
-    HI_COMMENT + r"\s+[\"“']?(?P<kw>[A-Z][A-Z0-9]+)\b(?![a-z])"
+    HI_COMMENT + HI_COMMENT_VERB + r"\s+[\"“']?(?P<kw>[A-Z][A-Z0-9]+)\b(?![a-z])"
     r"|(?<![\w\"“'])[\"“']?(?P<kw2>[A-Z][A-Z0-9]+)[\"”']?\s+" + HI_WRITE))
-HI_LOOSE_KEYWORD_ASK = re.compile(deva_fold(
-    HI_COMMENT + r"\s+(?!(?:में|मे)\s)(?:[\"“'][^\"”'\n]+[\"”']|(?-i:[a-z][a-z0-9]*)|[" + DEVA + r"]+)\s+"
-    + HI_WRITE))
+# The Devanagari class is added after folding: deva_fold would read the "-" of
+# a character range as a hyphen inside a compound word.
+HI_LOOSE_KEYWORD_ASK = re.compile(
+    deva_fold(HI_COMMENT + HI_COMMENT_VERB
+              + r"\s+(?!(?:में|मे)\s)(?:[\"“'][^\"”'\n]+[\"”']|(?-i:[a-z][a-z0-9]*)|")
+    + "[" + DEVA + "]+" + deva_fold(r")\s+" + HI_WRITE))
 HI_ASKS = [(deva_re(p), name) for p, name in [
-    (r"(?:dm|डीएम|मैसेज|message|inbox|इनबॉक्स)\s+(?:कीजिए|करें|करो|करिए|कर दीजिए|कर दें)", "DM me"),
+    (r"(?:dm|डीएम|मैसेज|message|inbox|इनबॉक्स)\s+(?:(?:में|पर)\s+)?(?:[^\s।.!?]+\s+){0,2}?"
+     r"(?:कीजिए|करें|करो|करिए|कर दीजिए|कर दें|भेजिए|भेज दीजिए|भेजें|भेज दें|भेजो|भेज दो)"
+     r"|(?:मुझे|मुझको|हमें)\s+(?:[^\s।.!?]+\s+){0,2}?(?:भेजिए|भेज दीजिए|भेजें|भेज दें|भेजो|भेज दो)", "DM me"),
     (r"(?:save|सेव)\s+(?:कर\s+)?(?:लीजिए|लें|लो|करें|कीजिए|करिए|रखिए|रखें)", "save this"),
-    (r"(?:share|शेयर)\s+(?:कीजिए|करें|करो|करिए|कर दीजिए|कर दें)|भेज दीजिए|भेज दें|भेजिए", "share this"),
+    (r"(?:share|शेयर)\s+(?:कीजिए|करें|करो|करिए|कर दीजिए|कर दें)", "share this"),
     (r"(?:follow|फॉलो|फ़ॉलो)\s+(?:कीजिए|करें|करो|करिए|कर लीजिए|कर लें)", "follow"),
     (r"(?:bio|बायो)\s+(?:में|मे)\s+(?:link|लिंक)|(?:link|लिंक)\s+(?:bio|बायो)\s+(?:में|मे)", "link in bio"),
     (r"(?:swipe|स्वाइप)\s+(?:कीजिए|करें|करो|करिए)", "swipe or tap"),
@@ -180,7 +222,24 @@ HI_ASKS = [(deva_re(p), name) for p, name in [
 HI_GREETING_RE = deva_re(
     r"^\s*(?:नमस्ते|नमस्कार|प्रणाम|हेलो|हैलो|हाय|जय जोहार|राम राम|सुप्रभात|शुभ प्रभात"
     r"|गुड मॉर्निंग|दोस्तों|दोस्तो)")
-HI_CONCRETE_RE = deva_re("|".join(sorted(HI_SPOKEN_NUMBERS | HI_MONEY_WORDS, key=len, reverse=True)))
+# "भेज दीजिए" on its own is a share ask ("अपने भाई को भेज दीजिए"), unless the
+# same sentence is about a DM or about sending to me ("DM में PAPERS भेजिए",
+# "मुझे भेज दीजिए"): that is the DM ask above, not a share.
+HI_SEND_RE = deva_re(r"भेज दीजिए|भेज दें|भेज दो|भेजिए|भेजें|भेजो")
+HI_DM_CONTEXT_RE = deva_re(r"dm|डीएम|मैसेज|message|inbox|इनबॉक्स|मुझे|मुझको|हमें")
+HI_TOKEN_RE = re.compile(r"[A-Za-z0-9]+|" + DEVA_WORD_RE.pattern)
+
+
+def hi_asks(folded):
+    found = []
+    clauses = re.split("[.!?\n" + DANDA + "]", danda_text(folded))
+    for pattern, name in HI_ASKS:
+        hit = pattern.search(folded)
+        if not hit and name == "share this":
+            hit = any(HI_SEND_RE.search(c) and not HI_DM_CONTEXT_RE.search(c) for c in clauses)
+        if hit:
+            found.append(name)
+    return found
 
 FILLER_TAGS = {"#viral", "#fyp", "#explore", "#explorepage", "#foryou", "#foryoupage",
                "#trending", "#instagood", "#love", "#follow", "#like4like", "#reels",
@@ -223,8 +282,7 @@ def analyse(text, cut=TRUNCATE, keywords=None):
     keyword = KEYWORD_ASK.search(stripped)
     hi_keyword = None
     if lang != "en":
-        asks += [name for pattern, name in HI_ASKS
-                 if pattern.search(folded) and name not in asks]
+        asks += [name for name in hi_asks(folded) if name not in asks]
         if not keyword:
             hi_keyword = HI_KEYWORD_ASK.search(folded)
             if hi_keyword and "comment a keyword" not in asks:
@@ -266,7 +324,7 @@ def analyse(text, cut=TRUNCATE, keywords=None):
 
     concrete = len(CONCRETE_RE.findall(window))
     if lang != "en":                         # "पाँच लाख" is as concrete as "5 lakh"
-        concrete += len(HI_CONCRETE_RE.findall(deva_fold(window)))
+        concrete += len(hi_number_hits(HI_TOKEN_RE.findall(deva_fold(window))))
     add("HOOK IS CONCRETE", "PASS" if concrete else "WARN",
         f"{concrete} number(s) or name(s) in the visible window"
         + ("" if concrete else " - nothing checkable before the tap"))

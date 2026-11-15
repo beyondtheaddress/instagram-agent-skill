@@ -138,7 +138,7 @@ do not tell a user their text is undetectable.
 
 ## Hindi and mixed drafts
 
-The scripts read Devanagari. A Hindi word counts as one word, । and ॥ end a sentence (so does a `|` typed after a Hindi word), and spellings with or without a nukta or candrabindu (ज़रूरी, जरूरी; पाँच, पांच) compare equal. Each tool decides whether the text is `en`, `hi` or `mixed` (Hindi and English words together, as most Hinglish is). English output is exactly what it was: no new fields, no new lines.
+The scripts read Devanagari. A Hindi word counts as one word, । and ॥ end a sentence (so does a `|` typed after a Hindi word), and common spelling variants compare equal: nukta or none (ज़रूरी, जरूरी), candrabindu or anusvara (पाँच, पांच), visarga or none (निःसंदेह, निसंदेह), महत्त्व or महत्व, -ये or -ए endings (गये, गए), यह or ये, and a hyphenated compound (भाग-दौड़, भागदौड़), which counts as one word. Each tool decides whether the text is `en`, `hi` or `mixed` (Hindi and English words together, as most Hinglish is). English output is exactly what it was: no new fields, no new lines.
 
 - `detect.py` counts Hindi words, sentences, pronouns (मैं, हम, आप, तुम...) and number words. Hindi
   has no contractions, so for `hi` and `mixed` text VOICE is pronouns and structural tells, half

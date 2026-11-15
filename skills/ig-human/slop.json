@@ -1040,7 +1040,12 @@
       "fix": "Delete it and open on the point. Hindi viewers scroll past a preamble as fast as anyone."
     },
     {
-      "find": "दोस्तों आज हम बात करेंगे",
+      "find": "आज की इस रील में",
+      "family": "openers",
+      "fix": "Delete it and open on the point. Hindi viewers scroll past a preamble as fast as anyone."
+    },
+    {
+      "find": "इस रील में हम",
       "family": "openers",
       "fix": "Delete it and open on the point. Hindi viewers scroll past a preamble as fast as anyone."
     },
@@ -1055,12 +1060,12 @@
       "fix": "Delete it and open on the point. Hindi viewers scroll past a preamble as fast as anyone."
     },
     {
-      "find": "क्या आप जानते हैं",
+      "find": "जैसा कि आप सभी जानते हैं",
       "family": "openers",
       "fix": "Delete it and open on the point. Hindi viewers scroll past a preamble as fast as anyone."
     },
     {
-      "find": "जैसा कि आप सभी जानते हैं",
+      "find": "जैसा कि हम सब जानते हैं",
       "family": "openers",
       "fix": "Delete it and open on the point. Hindi viewers scroll past a preamble as fast as anyone."
     },
@@ -1070,7 +1075,12 @@
       "fix": "Delete it and open on the point. Hindi viewers scroll past a preamble as fast as anyone."
     },
     {
-      "find": "आज के दौर में",
+      "find": "आज के आधुनिक युग में",
+      "family": "openers",
+      "fix": "Delete it and open on the point. Hindi viewers scroll past a preamble as fast as anyone."
+    },
+    {
+      "find": "आज के आधुनिक दौर में",
       "family": "openers",
       "fix": "Delete it and open on the point. Hindi viewers scroll past a preamble as fast as anyone."
     },
@@ -1081,6 +1091,16 @@
     },
     {
       "find": "वीडियो को लाइक करें",
+      "family": "bait",
+      "fix": "Ask for the one action this post earns, in your own words, not the YouTube formula."
+    },
+    {
+      "find": "रील को लाइक करें",
+      "family": "bait",
+      "fix": "Ask for the one action this post earns, in your own words, not the YouTube formula."
+    },
+    {
+      "find": "पोस्ट को लाइक करें",
       "family": "bait",
       "fix": "Ask for the one action this post earns, in your own words, not the YouTube formula."
     },
@@ -1105,6 +1125,16 @@
       "fix": "Ask for the one action this post earns, in your own words, not the YouTube formula."
     },
     {
+      "find": "आखिर तक ज़रूर देखें",
+      "family": "bait",
+      "fix": "Ask for the one action this post earns, in your own words, not the YouTube formula."
+    },
+    {
+      "find": "रील को आखिर तक देखें",
+      "family": "bait",
+      "fix": "Ask for the one action this post earns, in your own words, not the YouTube formula."
+    },
+    {
       "find": "अत्यंत महत्वपूर्ण",
       "family": "formal",
       "fix": "Nobody talks like this. Say it the way you would say it across a table."
@@ -1125,7 +1155,22 @@
       "fix": "Nobody talks like this. Say it the way you would say it across a table."
     },
     {
+      "find": "महत्वपूर्ण भूमिका निभाते हैं",
+      "family": "formal",
+      "fix": "Nobody talks like this. Say it the way you would say it across a table."
+    },
+    {
       "find": "अहम भूमिका निभाता है",
+      "family": "formal",
+      "fix": "Nobody talks like this. Say it the way you would say it across a table."
+    },
+    {
+      "find": "अहम भूमिका निभाती है",
+      "family": "formal",
+      "fix": "Nobody talks like this. Say it the way you would say it across a table."
+    },
+    {
+      "find": "अहम भूमिका निभाते हैं",
       "family": "formal",
       "fix": "Nobody talks like this. Say it the way you would say it across a table."
     },
@@ -1150,12 +1195,12 @@
       "fix": "Nobody talks like this. Say it the way you would say it across a table."
     },
     {
-      "find": "संक्षेप में कहें तो",
+      "find": "निष्कर्ष में कहें तो",
       "family": "formal",
       "fix": "Nobody talks like this. Say it the way you would say it across a table."
     },
     {
-      "find": "सुनिश्चित करें कि",
+      "find": "संक्षेप में कहें तो",
       "family": "formal",
       "fix": "Nobody talks like this. Say it the way you would say it across a table."
     },

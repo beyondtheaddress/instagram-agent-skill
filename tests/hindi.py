@@ -339,6 +339,149 @@ def _():
         assert not bad, (s, bad[:5])
 
 
+# ======================================================================
+# Native-review corrections: false positives fixed, natural variants added
+# ======================================================================
+def formulas():
+    sw = module("ig-viral/swipe.py")
+    return sw, sw.load_formulas(os.path.join(SK, "ig-reel/hooks.json"))
+
+
+def hi_slop(text):
+    """The Hindi stock phrases detect.py finds in text."""
+    d = detect(text)["checks"]["SLOP DENSITY"]
+    return d["score"], d["detail"]
+
+
+def stock(text):
+    return [s["name"] for s in humanize(text)["report"]["structures"] if s["name"].startswith("Hindi stock")]
+
+
+@test("M1", "formula #4: 'पार्किंग की जगह ₹2 लाख' is not a Replacement; 'की जगह ले ली' still is")
+def _():
+    sw, F = formulas()
+    assert sw.classify("पार्किंग की जगह ₹2 लाख में मिल रही है।", F)[0] != 4
+    assert sw.classify("₹2,000 के tool ने मेरे editor की जगह ले ली।", F)[0] == 4
+
+
+@test("M2", "formula #5: 'मुझे डर लगता था' is not Time Collapse; 'पूरा दिन लग जाता था' is")
+def _():
+    sw, F = formulas()
+    assert sw.classify("मुझे डर लगता था कि लोन नहीं मिलेगा।", F)[0] != 5
+    for hook in ("पहले पूरा दिन लग जाता था।", "Proposal में पाँच घंटे लगते थे।",
+                 "पहले रजिस्ट्री में 3 दिन लगते थे, अब 2 घंटे।"):
+        assert sw.classify(hook, F)[0] == 5, hook
+
+
+@test("M3", "formula #8: an age is not an Insider Leak; 'मैं 10 साल से…' is")
+def _():
+    sw, F = formulas()
+    for age in ("मैं 25 साल का हूँ और पहला घर ले रहा हूँ।", "मैंने 25 साल की उम्र में घर लिया।"):
+        assert sw.classify(age, F)[0] != 8, age
+    assert sw.classify("मैं 10 साल से plots बेच रहा हूँ।", F)[0] == 8
+    assert sw.classify("मैंने 8 साल property deals करवाईं।", F)[0] == 8
+
+
+@test("M4", "removed slop: सुनिश्चित करें कि, आज के दौर में, क्या आप जानते हैं are no longer flagged")
+def _():
+    for line in ("रजिस्ट्री से पहले सुनिश्चित करें कि खसरा नंबर सही हो।",
+                 "आज के दौर में घर लेना आसान नहीं।", "क्या आप जानते हैं कि carpet area क्या है?"):
+        assert hi_slop(line)[0] == 100.0, (line, hi_slop(line))
+        assert stock(line) == [], (line, stock(line))
+    finds = {e["find"] for e in json.load(open(os.path.join(SK, "ig-human/slop.json"), encoding="utf-8"))["hi"]}
+    assert not finds & {"सुनिश्चित करें कि", "आज के दौर में", "क्या आप जानते हैं", "दोस्तों आज हम बात करेंगे"}
+
+
+@test("M5", "'दोस्तों आज हम बात करेंगे' is one stock phrase, not two")
+def _():
+    score, detail = hi_slop("दोस्तों आज हम बात करेंगे बजट पर।")
+    assert detail.startswith("1 stock terms"), detail
+    assert stock("दोस्तों आज हम बात करेंगे बजट पर।") == ["Hindi stock phrase: आज हम बात करेंगे"]
+
+
+@test("M6", "commands: चाहिए, लिये, किये, दिये, इसलिए are not; -ें verbs and मत/ज़रूर + -ना are")
+def _():
+    address = lambda t: hook(t)["checks"]["ADDRESS"]["detail"]
+    for t in ("मुझे घर चाहिए।", "ये पैसे मैंने घर के लिये बचाये।", "काम किये बिना पैसा नहीं।",
+              "उसने पैसे दिये और चला गया।", "इसलिए घर देर से मिला।", "Booking से पहले ये 7 बातें।",
+              "घर लेना आसान नहीं।"):
+        assert not address(t).startswith("imperative"), (t, address(t))
+    assert address("ये पढ़ें, फिर खरीदें।") == 'imperative ("पढ़ें")'           # shown as written
+    assert address("वीडियो ज़रूर देखना।") == 'imperative ("ज़रूर देखना")'
+    assert address("ये गलती मत करना।").startswith("imperative")
+
+
+@test("M7", "caption: 'भेजिए' in a DM or to-me sentence is a DM ask, not a share")
+def _():
+    assert caption("DM में PAPERS भेजिए")["asks"] == ["DM me"]
+    assert caption("मुझे भेज दीजिए")["asks"] == ["DM me"]
+    assert caption("अपने भाई को भेज दीजिए।")["asks"] == ["share this"]
+    d = caption("इसे save कर लीजिए। अपने दोस्त को भेज दीजिए।")
+    assert d["asks"] == ["save this", "share this"], d["asks"]
+
+
+@test("M8", "stakes: the name राज is not a stake word; रहस्य (secret) is")
+def _():
+    assert hook("राज ने घर लिया।")["checks"]["STAKES"]["score"] == 20.0
+    assert "रहस्य" in hook("Builder का रहस्य जानिए।")["checks"]["STAKES"]["detail"]
+
+
+@test("M9", "new slop variants: रील openers and bait, feminine and plural verbs, spelling variants")
+def _():
+    for line, want in (("आज की इस रील में हम EMI समझेंगे।", "आज की इस रील में"),
+                       ("रील को लाइक करें।", "रील को लाइक करें"), ("पोस्ट को लाइक करें।", "पोस्ट को लाइक करें"),
+                       ("सही प्लानिंग अहम भूमिका निभाती है।", "अहम भूमिका निभाती है"),
+                       ("ये दोनों महत्वपूर्ण भूमिका निभाते हैं।", "महत्वपूर्ण भूमिका निभाते हैं"),
+                       ("जैसा कि हम सब जानते हैं, दाम बढ़ रहे हैं।", "जैसा कि हम सब जानते हैं"),
+                       ("बजट बनाना अत्यंत महत्त्वपूर्ण है।", "अत्यंत महत्वपूर्ण"),       # त्त्व spelling
+                       ("निसंदेह यह सही फैसला है।", "निःसंदेह"),                        # no visarga
+                       ("ये कहना गलत नहीं होगा कि दाम बढ़ेंगे।", "यह कहना गलत नहीं होगा"),   # ये for यह
+                       ("आज की भाग-दौड़ भरी जिंदगी में।", "आज की भागदौड़ भरी ज़िंदगी में")):  # hyphen, no nukta
+        assert f"Hindi stock phrase: {want}" in stock(line), (line, stock(line))
+
+
+@test("M10", "formulas: 'मत करना' / 'न करें' are Negative Commands; 'X या Y … क्या सही' is Head To Head")
+def _():
+    sw, F = formulas()
+    for t in ("ये गलती मत करना।", "ऐसा न करें।", "EMI भरना मत भूलना।"):
+        assert sw.classify(t, F)[0] == 2, (t, sw.classify(t, F))
+    assert sw.classify("Flat या plot, आपके लिए क्या सही है", F)[0] == 17
+    assert sw.classify("न घर मिला न पैसा।", F)[0] != 2                      # न…न is not a command
+
+
+@test("M11", "keyword asks: 'Comment करो PAPERS' and 'PAPERS लिख दो' are typeable keyword asks")
+def _():
+    for line in ("Comment करो PAPERS", "PAPERS लिख दो", "कमेंट करो PAPERS"):
+        d = caption(line)
+        assert chk(d, "KEYWORD ASK")["status"] == "PASS" and d["asks"] == ["comment a keyword"], (line, d["asks"])
+
+
+@test("M12", "spelling fold: the reviewed variants match, and the fold stays narrow")
+def _():
+    f = module("ig-reel/hookscore.py").deva_fold
+    for a, b in (("गये", "गए"), ("लिये", "लिए"), ("किये", "किए"), ("नयी", "नई"), ("यह", "ये"),
+                 ("महत्त्व", "महत्व"), ("निःसंदेह", "निसंदेह"), ("भाग-दौड़", "भागदौड़"),
+                 ("महत्\u200dवपूर्ण", "महत्वपूर्ण")):
+        assert f(a) == f(b), (a, b)
+    assert f("ये") == "ये" and f("ये घर") == "ये घर"              # the word ये is not turned into ए
+    assert f("वह") == "वह" and f("राज") == "राज"
+    assert f("Kick-off, café") == "Kick-off, café"                 # English untouched
+    assert hook("सोच-समझकर घर लीजिए।")["checks"]["LENGTH"]["detail"].startswith("3 words")   # counts unchanged
+
+
+@test("M13", "numbers: दो as 'give' is not a number; दो लाख, साढ़े, सवा and छः are")
+def _():
+    spec = lambda t: hook(t)["checks"]["SPECIFICITY"]["detail"]
+    for t in ("मुझे वो दो।", "बता दो फिर देखेंगे।", "पैसे दो और जाओ।"):
+        assert "दो" not in spec(t), (t, spec(t))
+    for t, word in (("दो लाख का नुकसान हुआ।", "दो"), ("साढ़े तीन लाख बचाए।", "साढ़े"),
+                    ("सवा लाख की बचत।", "सवा"), ("छः महीने लगे।", "छः")):
+        assert word in spec(t), (t, spec(t))
+    assert chk(caption("मुझे वो दो।"), "HOOK IS CONCRETE")["status"] == "WARN"
+    assert beats("दो लाख बचाए।")["beats"][0]["concrete"] == 2          # दो and लाख
+    assert beats("मुझे वो दो।")["beats"][0]["concrete"] == 0
+
+
 if __name__ == "__main__":
     only = sys.argv[1:]
     passed = failed = 0

@@ -156,7 +156,7 @@ These are real `hookscore.py` scores. Re-run them if you change the scorer.
 
 ## Hindi and mixed scripts
 
-The scripts read Devanagari. A Hindi word counts as one word, । and ॥ end a sentence (so does a `|` typed after a Hindi word), and spellings with or without a nukta or candrabindu (ज़रूरी, जरूरी; पाँच, पांच) compare equal. Each tool decides whether the text is `en`, `hi` or `mixed` (Hindi and English words together, as most Hinglish is). English output is exactly what it was: no new fields, no new lines.
+The scripts read Devanagari. A Hindi word counts as one word, । and ॥ end a sentence (so does a `|` typed after a Hindi word), and common spelling variants compare equal: nukta or none (ज़रूरी, जरूरी), candrabindu or anusvara (पाँच, पांच), visarga or none (निःसंदेह, निसंदेह), महत्त्व or महत्व, -ये or -ए endings (गये, गए), यह or ये, and a hyphenated compound (भाग-दौड़, भागदौड़), which counts as one word. Each tool decides whether the text is `en`, `hi` or `mixed` (Hindi and English words together, as most Hinglish is). English output is exactly what it was: no new fields, no new lines.
 
 - `hookscore.py` knows Hindi stakes (नहीं, मत, गलती, नुकसान, रुकिए...), Hindi numbers and money
   words (पाँच, हज़ार, लाख, करोड़, रुपये), Hindi weak openers (नमस्ते, दोस्तों, तो, आज...), the Hindi

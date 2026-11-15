@@ -6,7 +6,7 @@ Tested with **Python 3.13**, the version CI uses.
 | Layer | File | What it checks | Expected |
 |---|---|---|---|
 | Regression | `regress.py` | 70 tests on the skill scripts (humanize, detect, caption, hookscore, beats, swipe) and the docs they depend on | 70 passed, 0 failed |
-| Hindi | `hindi.py` | 25 tests on Hindi and mixed Hindi-English text: tokenizer and language detection, Hindi hooks, beats timing, caption asks, detection, joiners, formulas; and that English output gains no new fields | 25 passed, 0 failed |
+| Hindi | `hindi.py` | 38 tests on Hindi and mixed Hindi-English text: tokenizer and language detection, spelling variants, Hindi hooks, beats timing, caption asks, detection, joiners, formulas; the corrections from the native-language review (M1-M13); and that English output gains no new fields | 38 passed, 0 failed |
 | Functional | `validate.py` | 90 checks: sample outputs for 9 instruction-only skills against each SKILL.md's own rules, plus `/ig-human` scoring | 90/90 |
 | Golden | `golden.py --check` | Exact English output (stdout + exit code) of the scripts on the English fixtures | 24/24 unchanged |
 
@@ -23,7 +23,7 @@ Individually:
 ```bash
 python3 tests/regress.py                          # all 70
 python3 tests/regress.py H C                      # only ids starting with H or C
-python3 tests/hindi.py                            # all 25 Hindi tests
+python3 tests/hindi.py                            # all 38 Hindi tests
 PYTHONDONTWRITEBYTECODE=1 python3 tests/validate.py
 python3 tests/golden.py --check
 ```

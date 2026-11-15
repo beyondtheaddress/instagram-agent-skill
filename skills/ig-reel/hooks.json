@@ -30,7 +30,7 @@
       "best_for": "Saves and arguments. The imperative gets attention that a statement does not.",
       "trap": "Telling people to stop doing something nobody does. The habit has to be one the viewer recognises in themselves.",
       "match": "^\\s*(?:stop|quit|never|don'?t|dont|please)\\b[^.!?]{0,30}\\b(?:do|be|make|buy|use|start|say|post|send|take|charge)?\\b|\\b(?:do not|don'?t|dont|never) (?:do|be|make|buy|use|start|say|post|take)\\b|\\bquit your\\b",
-      "match_hi": "^\\s*(?:मत|कभी मत|कभी भी मत|रुकिए|रुको|रुकें)|(?:मत|ना) (?:करो|करें|कीजिए|करिए|खरीदो|खरीदें|खरीदिए|लो|लें|लीजिए|दो|दें|दीजिए|भरो|भरें|भरिए)|(?:रुकिए|रुको|रुकें)\\s*[।.!]?\\s*$"
+      "match_hi": "^\\s*(?:मत|कभी मत|कभी भी मत|रुकिए|रुको|रुकें)|(?:मत|ना|न) (?:करो|करें|कीजिए|करिए|करना|खरीदो|खरीदें|खरीदिए|खरीदना|लो|लें|लीजिए|लेना|दो|दें|दीजिए|देना|भरो|भरें|भरिए|भरना|भूलें|भूलिए|भूलना|छोड़ें|छोड़ना|रखें|रखना)|(?:रुकिए|रुको|रुकें)\\s*[।.!]?\\s*$"
     },
     {
       "id": 3,
@@ -52,7 +52,7 @@
       "best_for": "Demos and tool videos. The price gap does the work.",
       "trap": "Overstating the replacement. If it replaced 60% of the job, say 60%, or the comments will say it for you.",
       "match": "\\breplaced?\\b[^.!?]*\\$\\s?\\d|\\$\\s?\\d[^.!?]*\\breplaced?\\b|\\binstead of (?:paying|hiring)\\b",
-      "match_hi": "(?:की जगह|के बजाय|के बदले)[^।.!?]{0,40}(?:₹|\\d)|(?:₹|\\d)[^।.!?]{0,40}(?:की जगह|के बजाय|के बदले)"
+      "match_hi": "(?:₹|\\d)[^।.!?]{0,40}की जगह ले (?:ली|लिया|लेगा|लेगी|लेता|लेती)|की जगह ले (?:ली|लिया|लेगा|लेगी|लेता|लेती)[^।.!?]{0,40}(?:₹|\\d)|के बजाय[^।.!?]{0,40}(?:₹|\\d)|(?:₹|\\d)[^।.!?]{0,40}के बजाय"
     },
     {
       "id": 5,
@@ -63,7 +63,7 @@
       "best_for": "Process videos where the payoff is speed. Reads instantly on screen.",
       "trap": "A ratio nobody believes. 40 hours to 4 seconds gets treated as a lie even when it is true.",
       "match": "\\bused to take\\b|\\bnow (?:it )?(?:only )?takes?\\b|\\btakes? (?:me )?\\d+\\s*(?:sec|second|min|minute|hour|hr)",
-      "match_hi": "लगते थे|लगता था|लगती थी|अब (?:सिर्फ़ |बस |केवल )?\\d+\\s*(?:सेकंड|मिनट|घंटे|दिन)|(?:अब|आज) (?:सिर्फ़ |बस |केवल )?(?:दो|तीन|चार|पाँच|दस|बीस|तीस) (?:मिनट|घंटे|दिन)"
+      "match_hi": "\\d+\\s*(?:सेकंड|मिनट|घंटे|घंटा|दिन|हफ़्ते|हफ़्ता|महीने|महीना|साल)\\s+(?:लगते थे|लगता था|लगती थी|लग जाते थे|लग जाता था|लग जाती थी)|(?:दो|तीन|चार|पाँच|छह|सात|आठ|दस|बीस|तीस|पूरा|पूरे|आधा|आधे) (?:सेकंड|मिनट|घंटे|घंटा|दिन|हफ़्ते|हफ़्ता|महीने|महीना|साल) (?:लगते थे|लगता था|लगती थी|लग जाते थे|लग जाता था|लग जाती थी)|अब (?:सिर्फ़ |बस |केवल )?\\d+\\s*(?:सेकंड|मिनट|घंटे|दिन)|(?:अब|आज) (?:सिर्फ़ |बस |केवल )?(?:दो|तीन|चार|पाँच|दस|बीस|तीस) (?:मिनट|घंटे|दिन)"
     },
     {
       "id": 6,
@@ -96,7 +96,7 @@
       "best_for": "Authority without a credential slide. Works only if the years are real.",
       "trap": "Promising a secret and delivering the brochure. The comments are merciless about this one.",
       "match": "\\bi (?:spent|worked|ran|was|have been)\\b[^.!?]*\\b\\d+\\s*\\+?\\s*years?\\b|\\bwe never (?:told|said|showed)\\b|\\bnobody (?:puts|tells you about)\\b|\\bi (?:sell|sold|run)\\b[^.!?]*\\$\\s?\\d",
-      "match_hi": "(?:मैंने|मैं)\\s[^।.!?]{0,30}\\d+\\s*\\+?\\s*(?:साल|वर्ष)|अंदर की बात|(?:जो|ये) (?:बिल्डर|एजेंट|ब्रोकर|डीलर|बैंक)[^।.!?]{0,20}(?:नहीं|नही) (?:बताते|बताता|बताएंगे)"
+      "match_hi": "मैंने\\s[^।.!?]{0,30}\\d+\\s*\\+?\\s*(?:साल|वर्ष)(?!\\s+(?:का|की|के)(?:\\s|$|[,।.!?]))|(?:मैं|हम)\\s[^।.!?]{0,30}\\d+\\s*\\+?\\s*(?:साल|वर्ष)\\s+से|अंदर की बात|(?:जो|ये) (?:बिल्डर|एजेंट|ब्रोकर|डीलर|बैंक)[^।.!?]{0,20}(?:नहीं|नही) (?:बताते|बताता|बताएंगे)"
     },
     {
       "id": 9,
@@ -195,7 +195,7 @@
       "best_for": "Comments. People arrive already holding an opinion, which is the point.",
       "trap": "Refusing to pick. A comparison with a diplomatic ending is a video with no ending.",
       "match": "\\b(?:vs\\.?|versus)\\b|\\bdifferences? between\\b|\\b(?:a|the) or (?:b|the)\\b",
-      "match_hi": "बनाम|(?:के बीच|में) (?:अंतर|फ़र्क)|(?:कौन सा|कौनसा) (?:बेहतर|सही)"
+      "match_hi": "बनाम|(?:के बीच|में) (?:अंतर|फ़र्क)|(?:कौन सा|कौनसा) (?:बेहतर|सही)|[^\\s।,]+ या [^\\s।,?]+\\s*[,:]?\\s+[^।.!?]{0,30}(?:क्या सही|क्या बेहतर|किसमें फ़ायदा)"
     },
     {
       "id": 18,

@@ -51,7 +51,9 @@ import unicodedata as _ud  # noqa: E402
 
 DEVA = "\u0900-\u0963\u0966-\u097f\ua8e0-\ua8ff"    # letters, signs, digits; not the danda
 DANDA = "\u0964\u0965"                               # । and ॥ end a sentence, like "."
-DEVA_WORD_RE = re.compile("[" + DEVA + "]+(?:[\u200c\u200d][" + DEVA + "]+)*")
+# A joiner or a hyphen inside a word keeps it one word: सोच-समझकर is one word,
+# the way "fast-paced" is one word in English.
+DEVA_WORD_RE = re.compile("[" + DEVA + "]+(?:[\u200c\u200d-][" + DEVA + "]+)*")
 NOT_PROSE_RE = re.compile(r"https?://\S+|www\.\S+|\S+@\S+\.\S+|[#@]\S+")
 CALIBRATION = ("uncalibrated: the thresholds were set on English text, so read "
                "this as a rough guide for Hindi")
@@ -70,12 +72,27 @@ def lang_of(text):
 
 
 def deva_fold(text):
-    """One spelling for comparing Hindi: the nukta is dropped (ज़ = ज, ड़ = ड)
-    and candrabindu reads as anusvara (पाँच = पांच). Text without Devanagari
-    comes back unchanged."""
+    """One spelling for comparing Hindi, used only for matching, never for
+    output. Each rule joins two spellings of the same word:
+      nukta dropped            ज़रूरी = जरूरी, ग़लत = गलत
+      candrabindu = anusvara   पाँच = पांच
+      visarga dropped          निःसंदेह = निसंदेह, दुःख = दुख
+      त्त्व = त्व                महत्त्वपूर्ण = महत्वपूर्ण
+      -ये / -यी endings        गये = गए, लिये = लिए, नयी = नई (the word ये is kept)
+      यह = ये                  यह कहना = ये कहना
+      hyphen in a compound     भाग-दौड़ = भागदौड़
+      zero-width joiners       dropped
+    Text without Devanagari comes back unchanged."""
     if not re.search("[" + DEVA + "]", text):
         return text
-    return _ud.normalize("NFC", text).replace("\u093c", "").replace("\u0901", "\u0902")
+    t = _ud.normalize("NFC", text)
+    t = t.replace("\u093c", "").replace("\u0901", "\u0902").replace("\u0903", "")
+    t = t.replace("\u0924\u094d\u0924\u094d\u0935", "\u0924\u094d\u0935")
+    t = re.sub("[\u200c\u200d]", "", t)
+    t = re.sub("(?<=[" + DEVA + "])-(?=[" + DEVA + "])", "", t)
+    t = re.sub("(?<=[" + DEVA + "])\u092f\u0947(?![" + DEVA + "])", "\u090f", t)
+    t = re.sub("(?<=[" + DEVA + "])\u092f\u0940(?![" + DEVA + "])", "\u0908", t)
+    return re.sub("(?<![" + DEVA + "])\u092f\u0939(?![" + DEVA + "])", "\u092f\u0947", t)
 
 
 def deva_edges(body):
@@ -107,7 +124,7 @@ def _deva_set(*groups):
 HI_SPOKEN_NUMBERS = _deva_set(
     "दो तीन चार पाँच पांच छह छः सात आठ नौ दस ग्यारह बारह पंद्रह बीस पच्चीस तीस",
     "चालीस पचास साठ सत्तर अस्सी नब्बे सौ हज़ार हजार लाख करोड़ अरब दर्जन",
-    "आधा आधी आधे डेढ़ ढाई दोगुना दुगना तिगुना")
+    "आधा आधी आधे डेढ़ ढाई साढ़े सवा पौने दोगुना दुगना तिगुना")
 HI_MONEY_WORDS = _deva_set(
     "रुपये रुपए रुपया रुपयों पैसे पैसा किराया किराए सैलरी तनख़्वाह वेतन मुनाफ़ा",
     "ब्याज कीमत क़ीमत दाम बजट लोन ईएमआई प्रतिशत फ़ीसदी")
@@ -115,6 +132,24 @@ HI_MONEY_WORDS = _deva_set(
 HI_YOU = _deva_set("आप आपका आपकी आपके आपको आपने आपसे तुम तुम्हें तुम्हारा तुम्हारी",
                    "तुम्हारे तू तेरा तेरी तेरे तुझे")
 HI_ME = _deva_set("मैं मैंने मेरा मेरी मेरे मुझे मुझसे हम हमने हमारा हमारी हमारे हमें")
+# दो is two, and also "give" (पैसे दो, बता दो). As a verb it closes the clause
+# or follows another verb, so it is not counted there.
+_HI_DO_VERB_BEFORE = _deva_set("दे कर बता लिख भेज छोड़ रख ले दिखा समझा सुना")
+_HI_DO_VERB_AFTER = _deva_set("और फिर ना तो जी यार भाई")
+
+
+def hi_number_hits(tokens):
+    """Positions of the Hindi number and money words in a list of
+    deva_fold()ed tokens. Positions, so a caller can show the writer's own
+    spelling rather than the folded one."""
+    hits = []
+    for i, t in enumerate(tokens):
+        if t in HI_SPOKEN_NUMBERS or t in HI_MONEY_WORDS:
+            if t == "दो" and (i == len(tokens) - 1 or (i and tokens[i - 1] in _HI_DO_VERB_BEFORE)
+                              or tokens[i + 1] in _HI_DO_VERB_AFTER):
+                continue
+            hits.append(i)
+    return hits
 # --- end of Devanagari support -----------------------------------------------
 
 
@@ -185,16 +220,24 @@ HI_STAKES = _deva_set(
     "नहीं नही मत गलती ग़लती गलतियाँ गलत नुकसान नुक़सान घाटा रुकिए रुको रुकें सावधान",
     "धोखा धोखाधड़ी फ्रॉड ठगी खतरा ख़तरा जोखिम बर्बाद गँवाए गँवा खोया खो डूब डूबे",
     "फँस फँसे पछतावा पछताएंगे पहले बिना सिर्फ़ केवल लेकिन मगर सच सच्चाई छुपा छिपा",
-    "राज़ अवैध गैरकानूनी बचाए बचा बचत मुफ़्त फ्री वरना कभी समस्या दिक्कत चेतावनी")
+    "रहस्य अवैध गैरकानूनी बचाए बचा बचत मुफ़्त फ्री वरना कभी समस्या दिक्कत चेतावनी")
+# राज़ (secret) is left out on purpose: without its nukta it is राज, a name.
 HI_WEAK_OPENERS = [deva_fold(w).split() for w in (
     "नमस्ते", "नमस्कार", "हेलो", "हैलो", "हाय", "वेलकम", "दोस्तों", "दोस्तो", "तो",
     "आज", "बस", "देखिए", "देखो", "सुनिए", "सुनो", "चलिए", "अच्छा", "क्या आप",
     "आप सभी", "जैसा कि", "इस वीडियो", "इस रील")]
 # Hindi puts the verb last, so a Hindi imperative counts wherever it stands.
-# Polite forms end in -िए / -इए (रुकिए, बताइए); लिए, किए, दिए are not commands.
-HI_IMPERATIVES = _deva_set("मत रुको रुकें बचो बचें करो करें लिखो लिखें भेजो भेजें छोड़ो छोड़ें")
+# Polite forms end in -िए / -इए (रुकिए, बताइए). Words with that ending that are
+# not commands: लिए/लिये, किए/किये, दिए/दिये (spelling is folded), चाहिए, इसलिए.
+# The -ें forms are listed verb by verb, because -ें also ends plural nouns
+# (बातें, चीज़ें) and में. A -ना verb is a command only after मत, न or ज़रूर
+# (मत करना, ज़रूर देखना); on its own it is usually a noun (घर लेना आसान नहीं).
+HI_IMPERATIVES = _deva_set("मत रुको रुकें बचो बचें करो करें लिखो लिखें भेजो भेजें छोड़ो छोड़ें",
+                           "पढ़ें देखें खरीदें जानें रखें भरें लें दें सोचें समझें पूछें चुनें जाँचें माँगें",
+                           "बताएं बताएँ पढ़ो देखो जानो रखो पूछो")
 HI_IMPERATIVE_ENDS = tuple(deva_fold(e) for e in ("िए", "िये", "इए", "इये", "िएगा", "इएगा"))
-HI_NOT_IMPERATIVE = _deva_set("लिए किए दिए पिए जिए सिए")
+HI_NOT_IMPERATIVE = _deva_set("लिए किए दिए पिए जिए सिए चाहिए इसलिए किसलिए जिसलिए उसलिए")
+HI_NA_COMMAND_AFTER = _deva_set("मत न ना ज़रूर")
 HI_DEALBREAKERS = [
     (deva_re(r"^\s*(?:स्क्रॉल|scroll) (?:मत|ना) (?:करो|करें|कीजिए|करिए)"
              r"|^\s*(?:स्क्रॉल|scroll) करना (?:बंद|रोकिए|रोको)"),
@@ -207,9 +250,15 @@ HI_DEALBREAKERS = [
 ]
 
 
-def hi_imperative(token):
-    return token in HI_IMPERATIVES or (token.endswith(HI_IMPERATIVE_ENDS)
-                                       and token not in HI_NOT_IMPERATIVE)
+def hi_command(tokens):
+    """(start, end) positions of the first Hindi command in a list of folded
+    tokens, or None."""
+    for i, t in enumerate(tokens):
+        if t in HI_IMPERATIVES or (t.endswith(HI_IMPERATIVE_ENDS) and t not in HI_NOT_IMPERATIVE):
+            return i, i
+        if len(t) > 2 and t.endswith("ना") and i and tokens[i - 1] in HI_NA_COMMAND_AFTER:
+            return i - 1, i
+    return None
 
 
 DEALBREAKERS = [
@@ -256,9 +305,9 @@ def check_specificity(text):
     """One concrete thing beats three abstract ones."""
     nums = [n.strip() for n in NUMBER_RE.findall(text) if n.strip()]
     propers = set(PROPER_RE.findall(text))
-    low = [deva_fold(w.lower().strip("'’")) for w in words(text)]
-    spoken = [w for w in low if w in SPOKEN_NUMBERS or w in MONEY_WORDS
-              or w in HI_SPOKEN_NUMBERS or w in HI_MONEY_WORDS]
+    raw = [w.lower().strip("'’") for w in words(text)]
+    low = [deva_fold(w) for w in raw]          # matched folded, shown as written
+    spoken = [w for w in low if w in SPOKEN_NUMBERS or w in MONEY_WORDS] + [raw[i] for i in hi_number_hits(low)]
     hits = len(nums) + len(propers) + len(spoken)
     score = 15.0 if hits == 0 else clamp(45 + hits * 30)
     found = ", ".join(nums[:2] + sorted(propers)[:2] + spoken[:2])
@@ -268,8 +317,9 @@ def check_specificity(text):
 
 def check_stakes(text):
     """Tension, cost, negation. Something the viewer might lose."""
-    w = [deva_fold(x.lower().strip("'’")) for x in words(text)]
-    hits = [x for x in w if x in STAKES or x in HI_STAKES]
+    raw = [x.lower().strip("'’") for x in words(text)]
+    w = [deva_fold(x) for x in raw]
+    hits = [raw[i] for i, x in enumerate(w) if x in STAKES or x in HI_STAKES]
     markers = sorted(set(hits))
     if re.search(r"\$\s?\d", text) or (lang_of(text) != "en" and re.search(r"₹\s?\d", text)):
         markers.append("a price")
@@ -296,7 +346,7 @@ def check_frontload(text):
     if hit_opener is None:
         for weak in HI_WEAK_OPENERS:        # whole words: तो is weak, तोड़ is not
             if low[:len(weak)] == weak:
-                penalty, hit_opener = 30, " ".join(weak)
+                penalty, hit_opener = 30, " ".join(x.lower() for x in w[:len(weak)])
                 break
     payload = None
     for i, token in enumerate(low):
@@ -324,16 +374,17 @@ def check_frontload(text):
 def check_address(text):
     """Aimed at one viewer, or floating in the air."""
     low = text.lower()
-    w = [deva_fold(x.lower().strip("'’")) for x in words(text)]
+    raw = [x.lower().strip("'’") for x in words(text)]
+    w = [deva_fold(x) for x in raw]
     if re.search(r"\b(you|your|you're|youre|yourself)\b", low):
         return 100.0, "speaks to the viewer"
     if any(x in HI_YOU for x in w):
         return 100.0, "speaks to the viewer"
     if w and w[0] in IMPERATIVES:
         return 90.0, f"imperative opener (\"{w[0]}\")"
-    hi_cmd = next((x for x in w if hi_imperative(x)), None)
+    hi_cmd = hi_command(w)
     if hi_cmd:
-        return 90.0, f"imperative (\"{hi_cmd}\")"
+        return 90.0, f"imperative (\"{' '.join(raw[hi_cmd[0]:hi_cmd[1] + 1])}\")"
     if re.search(r"\b(i|my|me|we|our)\b", low):
         return 70.0, "first person, no viewer named"
     if any(x in HI_ME for x in w):
