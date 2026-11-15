@@ -117,3 +117,16 @@ linter:     READY
 ```
 
 Nothing is posted. The user pastes it.
+
+## Hindi and mixed captions
+
+The scripts read Devanagari. A Hindi word counts as one word, । and ॥ end a sentence (so does a `|` typed after a Hindi word), and spellings with or without a nukta or candrabindu (ज़रूरी, जरूरी; पाँच, पांच) compare equal. Each tool decides whether the text is `en`, `hi` or `mixed` (Hindi and English words together, as most Hinglish is). English output is exactly what it was: no new fields, no new lines.
+
+- "Comment में PAPERS लिखिए", "कमेंट में \"PAPERS\" लिखिए" and "PAPERS कमेंट करें" are one typeable
+  keyword ask, the same as "Comment PAPERS". A Devanagari or lower-case keyword ("Comment में पेपर
+  लिखिए") is flagged as loose: most people comment on an English keyboard, so capitals work.
+- Hindi asks are counted (save कर लीजिए, DM कीजिए, भेज दीजिए, follow करें, bio में link, बताइए), a
+  Hindi greeting on the first line fails it (नमस्ते, नमस्कार, जय जोहार, दोस्तों...), Hindi hashtags
+  count as tags, and Hindi number words make the hook concrete.
+- In the "what the feed shows" box the right-hand border can sit unevenly on Hindi lines, because
+  terminals draw vowel signs at different widths. The text inside the box is correct.

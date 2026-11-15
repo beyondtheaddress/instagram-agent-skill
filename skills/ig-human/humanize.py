@@ -33,11 +33,93 @@ import re
 import sys
 import unicodedata
 
+# --- Devanagari support ------------------------------------------------------
+# The same block is in hookscore.py, beats.py, detect.py, humanize.py,
+# caption.py and swipe.py, so each script still works when it is copied on its
+# own; tests/hindi.py fails if the six copies drift apart. English text has no
+# Devanagari in it, so nothing in this block changes what English input gives.
+import unicodedata as _ud  # noqa: E402
+
+DEVA = "\u0900-\u0963\u0966-\u097f\ua8e0-\ua8ff"    # letters, signs, digits; not the danda
+DANDA = "\u0964\u0965"                               # । and ॥ end a sentence, like "."
+DEVA_WORD_RE = re.compile("[" + DEVA + "]+(?:[\u200c\u200d][" + DEVA + "]+)*")
+NOT_PROSE_RE = re.compile(r"https?://\S+|www\.\S+|\S+@\S+\.\S+|[#@]\S+")
+CALIBRATION = ("uncalibrated: the thresholds were set on English text, so read "
+               "this as a rough guide for Hindi")
+
+
+def lang_of(text):
+    """'en' if there is no Devanagari word, 'hi' if at least four words in five
+    are Devanagari, otherwise 'mixed'. Links, hashtags and @handles are not
+    counted. Hindi typed in Latin letters ("aap kaise ho") reads as 'en'."""
+    body = NOT_PROSE_RE.sub(" ", text)
+    hi = len(DEVA_WORD_RE.findall(body))
+    if not hi:
+        return "en"
+    en = len(re.findall(r"[A-Za-z]+", body))
+    return "hi" if hi >= 4 * en else "mixed"
+
+
+def deva_fold(text):
+    """One spelling for comparing Hindi: the nukta is dropped (ज़ = ज, ड़ = ड)
+    and candrabindu reads as anusvara (पाँच = पांच). Text without Devanagari
+    comes back unchanged."""
+    if not re.search("[" + DEVA + "]", text):
+        return text
+    return _ud.normalize("NFC", text).replace("\u093c", "").replace("\u0901", "\u0902")
+
+
+def deva_edges(body):
+    """A regex that matches `body` only as whole words. \\b cannot do this for
+    Hindi: Python counts vowel signs as non-word characters, so \\b fires in
+    the middle of रुकिए."""
+    edge = r"[\w" + DEVA + "]"
+    return "(?<!" + edge + ")(?:" + body + ")(?!" + edge + ")"
+
+
+def deva_re(body):
+    """Compile a Hindi pattern. Match it against deva_fold(text)."""
+    return re.compile(deva_edges(deva_fold(body)), re.IGNORECASE)
+
+
+def danda_text(text):
+    """A '|' typed straight after a Hindi word is a danda: many phone keyboards
+    have no ।. Only used for finding sentence ends, never written back."""
+    return re.sub("(?<=[" + DEVA + r"])[ \t]*\|", "\u0964", text)
+
+
+def _deva_set(*groups):
+    return {deva_fold(w) for g in groups for w in g.split()}
+
+
+# Spoken numbers and money words, the Hindi half of SPOKEN_NUMBERS and
+# MONEY_WORDS. एक (one) and पहला (first) are left out for the same reason
+# "one" is: far more often filler than a quantity.
+HI_SPOKEN_NUMBERS = _deva_set(
+    "दो तीन चार पाँच पांच छह छः सात आठ नौ दस ग्यारह बारह पंद्रह बीस पच्चीस तीस",
+    "चालीस पचास साठ सत्तर अस्सी नब्बे सौ हज़ार हजार लाख करोड़ अरब दर्जन",
+    "आधा आधी आधे डेढ़ ढाई दोगुना दुगना तिगुना")
+HI_MONEY_WORDS = _deva_set(
+    "रुपये रुपए रुपया रुपयों पैसे पैसा किराया किराए सैलरी तनख़्वाह वेतन मुनाफ़ा",
+    "ब्याज कीमत क़ीमत दाम बजट लोन ईएमआई प्रतिशत फ़ीसदी")
+# The viewer, and the speaker. Same jobs as "you" and "I/we" in English.
+HI_YOU = _deva_set("आप आपका आपकी आपके आपको आपने आपसे तुम तुम्हें तुम्हारा तुम्हारी",
+                   "तुम्हारे तू तेरा तेरी तेरे तुझे")
+HI_ME = _deva_set("मैं मैंने मेरा मेरी मेरे मुझे मुझसे हम हमने हमारा हमारी हमारे हमें")
+# --- end of Devanagari support -----------------------------------------------
+
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 LEX = os.path.join(HERE, "slop.json")
 
 URL_RE = re.compile(r"https?://\S+|www\.\S+|\S+@\S+\.\S+")
-SENT_RE = re.compile(r"(?:[^.!?\n]|(?<=\d)\.(?=\d))+[.!?]*")   # same as detect.py
+SENT_RE = re.compile(r"(?:[^.!?\n" + DANDA + r"]|(?<=\d)\.(?=\d))+[.!?" + DANDA + "]*")   # same as detect.py
+# A zero-width joiner or non-joiner between two Devanagari letters is spelling:
+# it picks the half or full form of a conjunct, such as a half क before ष.
+# Deleting it changes how the word is drawn, so those are kept. Anywhere
+# else they still go.
+JOINERS = "\u200c\u200d"
+DEVA_JOINER_RE = re.compile("(?<=[" + DEVA + "])[" + JOINERS + "](?=[" + DEVA + "])")
 
 
 def load_lexicon(path=LEX):
@@ -77,6 +159,9 @@ def pass_invisible(text, lex):
         cp = _cp(entry["cp"])
         if isinstance(cp, tuple):
             pattern = "[" + re.escape(chr(cp[0])) + "-" + re.escape(chr(cp[1])) + "]"
+        elif chr(cp) in JOINERS:
+            c = re.escape(chr(cp))
+            pattern = "(?<![" + DEVA + "])" + c + "|" + c + "(?![" + DEVA + "])"
         else:
             pattern = re.escape(chr(cp))
         n = len(re.findall(pattern, text))
@@ -85,11 +170,13 @@ def pass_invisible(text, lex):
                          "action": entry["action"]})
             text = re.sub(pattern, "" if entry["action"] == "delete" else " ", text)
     # Any remaining Cf (format) character is invisible by definition.
-    stray = [c for c in text if unicodedata.category(c) == "Cf"]
+    kept = {m.start() for m in DEVA_JOINER_RE.finditer(text)}
+    stray = [c for i, c in enumerate(text) if unicodedata.category(c) == "Cf" and i not in kept]
     if stray:
         hits.append({"name": "other invisible format chars", "count": len(stray),
                      "action": "delete"})
-        text = "".join(c for c in text if unicodedata.category(c) != "Cf")
+        text = "".join(c for i, c in enumerate(text)
+                       if unicodedata.category(c) != "Cf" or i in kept)
     return text, hits
 
 
@@ -148,7 +235,7 @@ DANGLING_TAIL = re.compile(r"(?i)[,;]?[ \t]+(?:and|or|but|plus)[ \t]*([.!?])")
 # the cleanup above only ever removes a conjunction a deletion orphaned.
 KEEP_RE = re.compile(
     r"(?im)(?:(?:^|(?<=[.!?] )|(?<=[.!?]\t))[ \t]*|[,;]?[ \t]+)(?:and|or|but|plus)[ \t]*[.!?]+")
-HAS_TEXT = re.compile(r"[A-Za-z0-9#@\x00]")         # \x00: a line holding a protected sentence
+HAS_TEXT = re.compile(r"[A-Za-z0-9#@\x00" + DEVA + "]")   # \x00: a line holding a protected sentence
 
 
 def pass_lexical(text, lex):
@@ -203,6 +290,8 @@ def pass_lexical(text, lex):
         # actually deleted, so a writer's own "and" is never touched.
         text = DANGLING_SENTENCE.sub(lambda m: m.group(1), text)   # "And!" -> ""
         text = DANGLING_TAIL.sub(r"\1", text)                      # "this, and." -> "this."
+        # The same leftover after a danda: "बनाइए। Follow for more!" -> "बनाइए।"
+        text = re.sub("([" + DANDA + r"])[ \t]*[.!?]+", r"\1", text)
         # A line that had words and now has only an emoji or punctuation left
         # ("Tag someone who needs this 👇" -> "👇") goes too. A line that was
         # emoji-only in the original is the writer's and stays.
@@ -225,9 +314,17 @@ def scan_structures(text, lex):
         found = pattern.findall(text)
         if found:
             flags.append({"name": s["name"], "count": len(found), "fix": s["fix"]})
+    # Hindi stock phrases are reported, not rewritten: a Hindi replacement
+    # needs a native speaker's ear, so it is the writer's job, not a regex's.
+    folded = deva_fold(text)
+    for entry in lex.get("hi", []):
+        n = len(deva_re(re.escape(entry["find"]).replace("\\ ", r",?\s+")).findall(folded))
+        if n:
+            flags.append({"name": f"Hindi stock phrase: {entry['find']}", "count": n,
+                          "fix": entry["fix"]})
     # Sentence-length uniformity is structural too.
     # Every sentence counts, short ones included - same rule as detect.py BURSTINESS.
-    lens = [len(s.split()) for s in SENT_RE.findall(text) if s.split()]
+    lens = [len(s.split()) for s in SENT_RE.findall(danda_text(text)) if s.split()]
     if len(lens) >= 4:
         mean = sum(lens) / len(lens)
         var = sum((n - mean) ** 2 for n in lens) / len(lens)

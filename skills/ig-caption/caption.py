@@ -29,6 +29,82 @@ import re
 import sys
 import textwrap
 
+# --- Devanagari support ------------------------------------------------------
+# The same block is in hookscore.py, beats.py, detect.py, humanize.py,
+# caption.py and swipe.py, so each script still works when it is copied on its
+# own; tests/hindi.py fails if the six copies drift apart. English text has no
+# Devanagari in it, so nothing in this block changes what English input gives.
+import unicodedata as _ud  # noqa: E402
+
+DEVA = "\u0900-\u0963\u0966-\u097f\ua8e0-\ua8ff"    # letters, signs, digits; not the danda
+DANDA = "\u0964\u0965"                               # । and ॥ end a sentence, like "."
+DEVA_WORD_RE = re.compile("[" + DEVA + "]+(?:[\u200c\u200d][" + DEVA + "]+)*")
+NOT_PROSE_RE = re.compile(r"https?://\S+|www\.\S+|\S+@\S+\.\S+|[#@]\S+")
+CALIBRATION = ("uncalibrated: the thresholds were set on English text, so read "
+               "this as a rough guide for Hindi")
+
+
+def lang_of(text):
+    """'en' if there is no Devanagari word, 'hi' if at least four words in five
+    are Devanagari, otherwise 'mixed'. Links, hashtags and @handles are not
+    counted. Hindi typed in Latin letters ("aap kaise ho") reads as 'en'."""
+    body = NOT_PROSE_RE.sub(" ", text)
+    hi = len(DEVA_WORD_RE.findall(body))
+    if not hi:
+        return "en"
+    en = len(re.findall(r"[A-Za-z]+", body))
+    return "hi" if hi >= 4 * en else "mixed"
+
+
+def deva_fold(text):
+    """One spelling for comparing Hindi: the nukta is dropped (ज़ = ज, ड़ = ड)
+    and candrabindu reads as anusvara (पाँच = पांच). Text without Devanagari
+    comes back unchanged."""
+    if not re.search("[" + DEVA + "]", text):
+        return text
+    return _ud.normalize("NFC", text).replace("\u093c", "").replace("\u0901", "\u0902")
+
+
+def deva_edges(body):
+    """A regex that matches `body` only as whole words. \\b cannot do this for
+    Hindi: Python counts vowel signs as non-word characters, so \\b fires in
+    the middle of रुकिए."""
+    edge = r"[\w" + DEVA + "]"
+    return "(?<!" + edge + ")(?:" + body + ")(?!" + edge + ")"
+
+
+def deva_re(body):
+    """Compile a Hindi pattern. Match it against deva_fold(text)."""
+    return re.compile(deva_edges(deva_fold(body)), re.IGNORECASE)
+
+
+def danda_text(text):
+    """A '|' typed straight after a Hindi word is a danda: many phone keyboards
+    have no ।. Only used for finding sentence ends, never written back."""
+    return re.sub("(?<=[" + DEVA + r"])[ \t]*\|", "\u0964", text)
+
+
+def _deva_set(*groups):
+    return {deva_fold(w) for g in groups for w in g.split()}
+
+
+# Spoken numbers and money words, the Hindi half of SPOKEN_NUMBERS and
+# MONEY_WORDS. एक (one) and पहला (first) are left out for the same reason
+# "one" is: far more often filler than a quantity.
+HI_SPOKEN_NUMBERS = _deva_set(
+    "दो तीन चार पाँच पांच छह छः सात आठ नौ दस ग्यारह बारह पंद्रह बीस पच्चीस तीस",
+    "चालीस पचास साठ सत्तर अस्सी नब्बे सौ हज़ार हजार लाख करोड़ अरब दर्जन",
+    "आधा आधी आधे डेढ़ ढाई दोगुना दुगना तिगुना")
+HI_MONEY_WORDS = _deva_set(
+    "रुपये रुपए रुपया रुपयों पैसे पैसा किराया किराए सैलरी तनख़्वाह वेतन मुनाफ़ा",
+    "ब्याज कीमत क़ीमत दाम बजट लोन ईएमआई प्रतिशत फ़ीसदी")
+# The viewer, and the speaker. Same jobs as "you" and "I/we" in English.
+HI_YOU = _deva_set("आप आपका आपकी आपके आपको आपने आपसे तुम तुम्हें तुम्हारा तुम्हारी",
+                   "तुम्हारे तू तेरा तेरी तेरे तुझे")
+HI_ME = _deva_set("मैं मैंने मेरा मेरी मेरे मुझे मुझसे हम हमने हमारा हमारी हमारे हमें")
+# --- end of Devanagari support -----------------------------------------------
+
+
 LIMIT = 2200             # Instagram's hard caption limit.
 TRUNCATE = 125           # Roughly where the feed cuts to "... more".
 HASHTAG_LIMIT = 5        # Instagram's cap per post or reel since 18 Dec 2025,
@@ -37,7 +113,7 @@ HASHTAG_LIMIT = 5        # Instagram's cap per post or reel since 18 Dec 2025,
                          # rather than many generic ones, can improve both your
                          # content's performance and people's experience".
 
-HASHTAG_RE = re.compile(r"(?:^|\s)(#[A-Za-z0-9_]+)")
+HASHTAG_RE = re.compile(r"(?:^|\s)(#[A-Za-z0-9_" + DEVA + "]+)")    # #रायपुर is a tag too
 MENTION_RE = re.compile(r"(?:^|\s)(@[A-Za-z0-9_.]+)")
 LINK_RE = re.compile(r"https?://\S+|\bwww\.\S+|\b[a-z0-9-]+\.(?:com|co|io|net|org|ai|app)/\S*",
                      re.IGNORECASE)
@@ -79,6 +155,33 @@ ASKS = [
     (re.compile(r"(?i)\btell me\b|\bwhat would you\b|\bwhich one\b"), "answer a question"),
 ]
 
+# Hindi and Hinglish versions of the same checks. They only run on text that
+# has Devanagari in it (lang_of is not "en"), and they match deva_fold(text).
+# "Comment में PAPERS लिखिए" is one typeable keyword ask, the same as
+# "Comment PAPERS". A Devanagari or lower-case keyword is a loose one: most
+# people type comments on an English keyboard, so capitals are what works.
+HI_WRITE = r"(?:लिखिए|लिखें|लिखो|लिख दीजिए|लिख दें|कमेंट करें|कमेंट कीजिए|comment करें|comment कीजिए)"
+HI_COMMENT = r"(?i:comment|कमेंट|कॉमेंट|कमेन्ट)(?:\s+(?:में|मे|बॉक्स में|box में))?"
+HI_KEYWORD_ASK = re.compile(deva_fold(
+    HI_COMMENT + r"\s+[\"“']?(?P<kw>[A-Z][A-Z0-9]+)\b(?![a-z])"
+    r"|(?<![\w\"“'])[\"“']?(?P<kw2>[A-Z][A-Z0-9]+)[\"”']?\s+" + HI_WRITE))
+HI_LOOSE_KEYWORD_ASK = re.compile(deva_fold(
+    HI_COMMENT + r"\s+(?!(?:में|मे)\s)(?:[\"“'][^\"”'\n]+[\"”']|(?-i:[a-z][a-z0-9]*)|[" + DEVA + r"]+)\s+"
+    + HI_WRITE))
+HI_ASKS = [(deva_re(p), name) for p, name in [
+    (r"(?:dm|डीएम|मैसेज|message|inbox|इनबॉक्स)\s+(?:कीजिए|करें|करो|करिए|कर दीजिए|कर दें)", "DM me"),
+    (r"(?:save|सेव)\s+(?:कर\s+)?(?:लीजिए|लें|लो|करें|कीजिए|करिए|रखिए|रखें)", "save this"),
+    (r"(?:share|शेयर)\s+(?:कीजिए|करें|करो|करिए|कर दीजिए|कर दें)|भेज दीजिए|भेज दें|भेजिए", "share this"),
+    (r"(?:follow|फॉलो|फ़ॉलो)\s+(?:कीजिए|करें|करो|करिए|कर लीजिए|कर लें)", "follow"),
+    (r"(?:bio|बायो)\s+(?:में|मे)\s+(?:link|लिंक)|(?:link|लिंक)\s+(?:bio|बायो)\s+(?:में|मे)", "link in bio"),
+    (r"(?:swipe|स्वाइप)\s+(?:कीजिए|करें|करो|करिए)", "swipe or tap"),
+    (r"बताइए|बताइये|बताएं|बताएँ|बताओ|आपकी राय", "answer a question"),
+]]
+HI_GREETING_RE = deva_re(
+    r"^\s*(?:नमस्ते|नमस्कार|प्रणाम|हेलो|हैलो|हाय|जय जोहार|राम राम|सुप्रभात|शुभ प्रभात"
+    r"|गुड मॉर्निंग|दोस्तों|दोस्तो)")
+HI_CONCRETE_RE = deva_re("|".join(sorted(HI_SPOKEN_NUMBERS | HI_MONEY_WORDS, key=len, reverse=True)))
+
 FILLER_TAGS = {"#viral", "#fyp", "#explore", "#explorepage", "#foryou", "#foryoupage",
                "#trending", "#instagood", "#love", "#follow", "#like4like", "#reels",
                "#reelsinstagram", "#viralreels", "#instadaily"}
@@ -114,9 +217,21 @@ def analyse(text, cut=TRUNCATE, keywords=None):
     emoji = EMOJI_RE.findall(stripped)
     window = visible_window(stripped, cut)
     truncated = chars > cut
+    lang = lang_of(stripped)
+    folded = deva_fold(stripped)
     asks = [name for pattern, name in ASKS if pattern.search(stripped)]
     keyword = KEYWORD_ASK.search(stripped)
-    loose = None if keyword else LOOSE_KEYWORD_ASK.search(stripped)
+    hi_keyword = None
+    if lang != "en":
+        asks += [name for pattern, name in HI_ASKS
+                 if pattern.search(folded) and name not in asks]
+        if not keyword:
+            hi_keyword = HI_KEYWORD_ASK.search(folded)
+            if hi_keyword and "comment a keyword" not in asks:
+                asks.insert(0, "comment a keyword")
+    loose = None if keyword or hi_keyword else LOOSE_KEYWORD_ASK.search(stripped)
+    if not (keyword or hi_keyword or loose) and lang != "en":
+        loose = HI_LOOSE_KEYWORD_ASK.search(folded)
     if loose:
         asks.append("comment a phrase")     # still an ask, just not a typeable one
     filler = [t for t in tags if t.lower() in FILLER_TAGS]
@@ -139,7 +254,7 @@ def analyse(text, cut=TRUNCATE, keywords=None):
     elif EMOJI_RE.match(first_line):
         add("FIRST LINE", "FAIL",
             "opens on an emoji. The first character is worth a word")
-    elif GREETING_RE.match(first_line):
+    elif GREETING_RE.match(first_line) or (lang != "en" and HI_GREETING_RE.match(deva_fold(first_line))):
         add("FIRST LINE", "FAIL",
             "opens on a greeting. Nobody came to the feed to be greeted; lead with the hook or the ask")
     elif len(first_line) > cut:
@@ -149,9 +264,12 @@ def analyse(text, cut=TRUNCATE, keywords=None):
     else:
         add("FIRST LINE", "PASS", f"{len(first_line)} characters, lands whole")
 
-    add("HOOK IS CONCRETE", "PASS" if CONCRETE_RE.search(window) else "WARN",
-        f"{len(CONCRETE_RE.findall(window))} number(s) or name(s) in the visible window"
-        + ("" if CONCRETE_RE.search(window) else " - nothing checkable before the tap"))
+    concrete = len(CONCRETE_RE.findall(window))
+    if lang != "en":                         # "पाँच लाख" is as concrete as "5 lakh"
+        concrete += len(HI_CONCRETE_RE.findall(deva_fold(window)))
+    add("HOOK IS CONCRETE", "PASS" if concrete else "WARN",
+        f"{concrete} number(s) or name(s) in the visible window"
+        + ("" if concrete else " - nothing checkable before the tap"))
 
     if len(tags) > HASHTAG_LIMIT:
         add("HASHTAGS", "FAIL", f"{len(tags)} tags, over Instagram's cap of {HASHTAG_LIMIT}. "
@@ -167,7 +285,8 @@ def analyse(text, cut=TRUNCATE, keywords=None):
 
     if not tags:
         add("TAG PLACEMENT", "PASS", "no tags to place")
-    elif any(re.search(r"(?:^|\s)" + re.escape(t) + r"\b", window) for t in tags):
+    elif any(re.search(r"(?:^|\s)" + re.escape(t) + (r"\b" if t[-1].isascii() else "(?![" + DEVA + "])"),
+                       window) for t in tags):
         add("TAG PLACEMENT", "WARN", "a hashtag is inside the visible window, "
                                      "spending feed space on a label")
     else:
@@ -187,6 +306,9 @@ def analyse(text, cut=TRUNCATE, keywords=None):
 
     if keyword:
         add("KEYWORD ASK", "PASS", f"{keyword.group(0).split()[-1].strip(chr(34) + chr(39) + '“')} "
+                                   "is one word in capitals, easy to type")
+    elif hi_keyword:
+        add("KEYWORD ASK", "PASS", f"{hi_keyword.group('kw') or hi_keyword.group('kw2')} "
                                    "is one word in capitals, easy to type")
     elif loose:
         add("KEYWORD ASK", "WARN", f"{loose.group(0)} - not a keyword people can type. "
@@ -212,7 +334,7 @@ def analyse(text, cut=TRUNCATE, keywords=None):
     warns = sum(1 for c in checks if c["status"] == "WARN")
     verdict = "FIX" if fails else ("REVIEW" if warns else "READY")
 
-    return {
+    a = {
         "characters": chars, "limit": LIMIT, "truncate_at": cut,
         "visible": window, "truncated": truncated,
         "first_line_chars": len(first_line),
@@ -220,6 +342,9 @@ def analyse(text, cut=TRUNCATE, keywords=None):
         "emoji": len(emoji), "asks": asks,
         "checks": checks, "verdict": verdict,
     }
+    if lang != "en":                         # English output stays exactly as it was
+        a["lang"] = lang
+    return a
 
 
 def render(a, out=sys.stdout):
